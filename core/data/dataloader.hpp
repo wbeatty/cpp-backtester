@@ -20,6 +20,12 @@ class csvEventSource : public EventSource {
         void load_csv();
         const char *file_head;
         const char *file_end;
+
+        bool skipToNextField();
+        bool parseISO(uint64_t &timestamp_ns);
+        bool parseValue(auto &val);
+        bool parseAction(uint8_t event_type);
+        bool parseSide(uint8_t side);
 };
 
 class DataLoader {
