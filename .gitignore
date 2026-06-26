@@ -48,5 +48,5 @@ env/
 .vscode/
 
 # Data
-data/*.csv
+data/
 !data/preview.csv

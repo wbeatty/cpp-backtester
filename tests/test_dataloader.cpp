@@ -1,29 +1,20 @@
 #include "data/dataloader.hpp"
 
+#include <cassert>
 #include <iostream>
 #include <memory>
+#include <string>
 
-#ifndef PREVIEW_CSV
-#define PREVIEW_CSV "data/preview.csv"
-#endif
-
-static constexpr std::size_t EXPECTED_EVENTS = 20;
+static constexpr std::size_t EXPECTED_EVENTS = 1e7;
 
 int main() {
-    const char* path = PREVIEW_CSV;
+    std::string datafile = "data/XNAS-20260626-CVWMCXCAKC/xnas-itch-20260525-20260624.mbo.SPY.csv";
+    const char* path = datafile.c_str();
 
     DataLoader loader(std::make_unique<csvEventSource>(path));
     loader.load();
-
-    const std::size_t loaded = loader.size();
-    std::cout << "[test_dataloader] path=" << path
-              << " loaded=" << loaded
-              << " expected=" << EXPECTED_EVENTS << "\n";
-
-    if (loaded != EXPECTED_EVENTS) {
-        std::cerr << "[test_dataloader] FAILED: parsed event count mismatch\n";
-        return 1;
-    }
+    
+    assert(loader.size() == EXPECTED_EVENTS);
 
     std::cout << "[test_dataloader] PASSED\n";
     return 0;
