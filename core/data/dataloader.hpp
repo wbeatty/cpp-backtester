@@ -4,6 +4,7 @@
 #include <memory>
 #include <cstddef>
 #include <iostream>
+#include <sys/mman.h>
 
 class EventSource {
     public:
@@ -14,16 +15,20 @@ class EventSource {
 class csvEventSource : public EventSource {
     public:
         csvEventSource(const char* path) : inputFile(path) {load_csv();};
+        ~csvEventSource() { if (file_head) munmap(file_head, file_size);}
+        
         bool next(MarketEvent& out) override;
     private:
         const char* inputFile = nullptr;
         bool loaded = false;
         void load_csv();
-        const char *file_head;
+
+        void *file_head;
+        const char *curr_head;
         const char *file_end;
+        size_t file_size;
 
         bool skipToNextField();
-        bool parseISO(uint64_t &timestamp_ns);
         bool parseValue(auto &val);
         bool parseAction(uint8_t &event_type);
         bool parseSide(uint8_t &side);
@@ -40,12 +45,17 @@ class DataLoader {
         };
 
         void load() {
+            if (!eventSource) {
+                std::cerr << "ERROR: Event Source failed to load into DataLoader\n";
+                return;
+            }
             MarketEvent event;
             uint64_t i = 0;
             while (eventSource->next(event) && i < 1e7) {
                 eventQueue.push_back(event);
                 i++;
             }
+            eventSource.reset();
         }
 
         std::size_t size() const { return eventQueue.size(); }

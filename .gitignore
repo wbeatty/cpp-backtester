@@ -49,4 +49,5 @@ env/
 
 # Data
 data/
+!core/data/
 !data/preview.csv

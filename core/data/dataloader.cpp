@@ -9,7 +9,7 @@
 
 bool csvEventSource::parseSide(uint8_t &side) {
     // A=Ask (or sell agressor in trade), B=Bid (or buy aggressor in trade), N=No side specified
-    switch (*file_head) {
+    switch (*curr_head) {
         case 'A':
             side = 1;
             break;
@@ -20,17 +20,17 @@ bool csvEventSource::parseSide(uint8_t &side) {
             side = 3;
             break;
         default:
-            std::cerr << "Invalid side: " << *file_head << '\n';
-            file_head += 2;
+            std::cerr << "Invalid side: " << *curr_head << '\n';
+            curr_head += 2;
             return false;
     }
-    file_head += 2;
+    curr_head += 2;
     return true;
 }
 
 bool csvEventSource::parseAction(uint8_t &event_type) {
     // A=Add, C=Cancel, M=Modify, R=Clear book, T=Trade, F=Fill, N=None
-    switch (*file_head) {
+    switch (*curr_head) {
         case 'A':
             event_type = 1;
             break;
@@ -53,27 +53,27 @@ bool csvEventSource::parseAction(uint8_t &event_type) {
             event_type = 7;
             break;
         default:
-            std::cerr << "Invalid Event Type: " << *file_head << '\n';
-            file_head += 2;
+            std::cerr << "Invalid Event Type: " << *curr_head << '\n';
+            curr_head += 2;
             return false;
     }
-    file_head += 2;
+    curr_head += 2;
     return true;
 }
 
 bool csvEventSource::skipToNextField() {
-    while (file_head < file_end && *file_head != ',' && *file_head != '\n' && *file_head != '\r') ++file_head;
-    if (file_head < file_end && *file_head == ',') ++file_head;
-    return file_head != file_end;
+    while (curr_head < file_end && *curr_head != ',' && *curr_head != '\n' && *curr_head != '\r') ++curr_head;
+    if (curr_head < file_end && *curr_head == ',') ++curr_head;
+    return curr_head != file_end;
 }
 
 bool csvEventSource::parseValue(auto &val) {
-    while (file_head < file_end && (*file_head == ' ' || *file_head == '\t')) ++file_head;
-    auto [ptr, ec] = std::from_chars(file_head, file_end, val);
+    while (curr_head < file_end && (*curr_head == ' ' || *curr_head == '\t')) ++curr_head;
+    auto [ptr, ec] = std::from_chars(curr_head, file_end, val);
     if (ec != std::errc()) return false;
+    // Assumes that a numeric field in the CSV is not followed by a \n
     ptr++;
-    // File head now looking at start of next field (post comma)
-    file_head = ptr;
+    curr_head = ptr;
     return true;
 }
 
@@ -101,23 +101,25 @@ void csvEventSource::load_csv() {
         throw std::runtime_error("Error: Failed to map file to virtual memory");
     }
 
-    file_head = static_cast<const char*>(raw);
-    file_end = file_head + sb.st_size;
+    file_head = raw;
+    curr_head = static_cast<const char*>(raw);
+    file_size = sb.st_size;
+    file_end = curr_head + sb.st_size;
     madvise(raw, sb.st_size, MADV_SEQUENTIAL);
 
-    // Skip headers
-    if (*file_head != '1' || *file_head != '2') {
-        while (file_head != file_end && *file_head != '\n') ++file_head;
-        if (file_head == file_end) {
+    // If curr_head is not an int, skip first line (for headers)
+    if (*curr_head < 48 || *curr_head > 57) {
+        while (curr_head != file_end && *curr_head != '\n') ++curr_head;
+        if (curr_head == file_end) {
             throw std::runtime_error("Error: No data found in file loading, only headers");
         }
-        file_head++;
+        curr_head++;
     }
 
     loaded = true;
 }
 
-bool csvEventSource::next(MarketEvent& out) {\
+bool csvEventSource::next(MarketEvent& out) {
     // Read the next line of data, turn from CSV -> MarketEvent, return in out
 
     // Check if CSV has already been mapped into memory
@@ -126,7 +128,7 @@ bool csvEventSource::next(MarketEvent& out) {\
         throw std::runtime_error("File not loaded properly");
     }
 
-    if (file_head == file_end) return false;
+    if (curr_head == file_end) return false;
 
     // Skip ts_recv (not needed in this implementation)
     skipToNextField();
@@ -135,6 +137,7 @@ bool csvEventSource::next(MarketEvent& out) {\
     uint64_t timestamp_ns;
     if (!parseValue(timestamp_ns)) {
         std::cerr << "PARSING ERROR: Failed to parse timestamp\n";
+        return false;
     }
 
     // Skip rtype, publisher_id
@@ -145,30 +148,35 @@ bool csvEventSource::next(MarketEvent& out) {\
     uint32_t asset_id;
     if (!parseValue(asset_id)) {
         std::cerr << "PARSING ERROR: Failed to parse asset_id\n";
+        return false;
     }
     
     // Parse action
     uint8_t event_type;
     if (!parseAction(event_type)) {
         std::cerr << "PARSING ERROR: Failed to parse event_type\n";
+        return false;
     }
 
     // Parse side
     uint8_t side;
     if (!parseSide(side)) {
         std::cerr << "PARSING ERROR: Failed to parse side\n";
+        return false;
     }
 
     // Parse price
     uint64_t price;
     if (!parseValue(price)) {
         std::cerr << "PARSING ERROR: Failed to parse price\n";
+        return false;
     }
 
     // Parse size
     uint32_t size;
     if (!parseValue(size)) {
         std::cerr << "PARSING ERROR: Failed to parse size\n";
+        return false;
     }
 
     // Skip channel_id
@@ -178,10 +186,11 @@ bool csvEventSource::next(MarketEvent& out) {\
     uint64_t order_id;
     if (!parseValue(order_id)) {
         std::cerr << "PARSING ERROR: Failed to parse order_id\n";
+        return false;
     }
 
-    while (file_head < file_end && *file_head != '\n') ++file_head;
-    if (file_head < file_end) ++file_head;
+    while (curr_head < file_end && *curr_head != '\n') ++curr_head;
+    if (curr_head < file_end) ++curr_head;
 
     out = MarketEvent(timestamp_ns = timestamp_ns, order_id = order_id, price = price, size = size, asset_id = asset_id, side = side, event_type = event_type);
     return true;
