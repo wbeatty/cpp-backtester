@@ -51,7 +51,7 @@ class DataLoader {
             }
             MarketEvent event;
             uint64_t i = 0;
-            while (eventSource->next(event) && i < 1e7) {
+            while (eventSource->next(event) && i < 1000) {
                 eventQueue.push_back(event);
                 i++;
             }
@@ -71,9 +71,4 @@ class DataLoader {
             std::cout << "Side: " << +event.side << '\n';
             std::cout << "Event Type: " << +event.event_type << '\n';
         }
-
-        
-
-
-
 };
