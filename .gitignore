@@ -51,3 +51,5 @@ env/
 data/
 !core/data/
 !data/preview.csv
+
+handoff/

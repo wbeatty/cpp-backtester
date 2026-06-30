@@ -1,5 +1,6 @@
 add_library(core
     data/dataloader.cpp
+    lob/book.cpp
 )
 
 target_include_directories(core
